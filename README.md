@@ -45,7 +45,40 @@ Large parts of the implementation are closely related to the hybrid A* algorithm
 
 #### <a name="setup"></a>Setup
 
-Run the following command to clone, build, and launch the package (requires a sources ROS environment):
+**Option A — Using this clone (Linux with ROS installed):**
+
+1. Install dependencies and build in a catkin workspace:
+   ```bash
+   sudo apt install libompl-dev
+   mkdir -p ~/catkin_ws/src
+   cp -r /path/to/this/hybrid_astar ~/catkin_ws/src/   # or symlink: ln -s /path/to/this/hybrid_astar ~/catkin_ws/src/
+   cd ~/catkin_ws
+   source /opt/ros/noetic/setup.bash   # or melodic, depending on your install
+   catkin_make
+   source devel/setup.bash
+   roslaunch hybrid_astar manual.launch
+   ```
+
+**Option B — Using Docker (macOS or any host without ROS):**
+
+1. Install [Docker](https://docs.docker.com/get-docker/) and start the Docker daemon.
+2. From this repo root:
+   ```bash
+   docker build -t hybrid_astar:noetic .   # Apple Silicon: docker build --platform linux/amd64 -t hybrid_astar:noetic .
+   docker run --rm hybrid_astar:noetic     # runs headless (planner + map_server, no RViz). Ctrl+C to stop.
+   ```
+   **Optional — RViz GUI on macOS (VNC, recommended):** XQuartz + X11 forwarding often fails with RViz (`Unable to create a suitable GLXContext`) because OpenGL/GLX don’t match. Use a **virtual display + VNC** instead:
+   ```bash
+   docker run --rm --platform linux/amd64 -p 5900:5900 hybrid_astar:noetic /catkin_ws/src/hybrid_astar/scripts/run_rviz_vnc.sh
+   ```
+   Then open a **VNC client** and connect to `localhost:5900` (no password). Examples: macOS **Screen Sharing** (Finder → Go → Connect to Server → `vnc://localhost:5900`), or [RealVNC Viewer](https://www.realvnc.com/en/connect/download/viewer/). You should see RViz and the map; use the Visualization steps below to set start/goal.
+   **Optional — RViz via XQuartz (often fails on macOS):** If you see `Unable to create a suitable GLXContext`, use the VNC method above. Otherwise: install XQuartz, enable “Allow connections from network clients”, run `xhost +localhost`, then:
+   ```bash
+   docker run --rm -e DISPLAY=host.docker.internal:0 hybrid_astar:noetic \
+     bash -c "source /opt/ros/noetic/setup.bash && source /catkin_ws/devel/setup.bash && roslaunch hybrid_astar manual.launch"
+   ```
+
+**Original one-liner (clone + build + launch, requires a sourced ROS environment):**
 
 ```
 sudo apt install libompl-dev \

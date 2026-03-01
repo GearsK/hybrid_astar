@@ -1,4 +1,8 @@
 <launch>
+ <!-- When running with Gazebo container, pass use_sim_time:=true so TF from Gazebo is not treated as "old". -->
+ <arg name="use_sim_time" default="false" />
+ <param name="use_sim_time" value="$(arg use_sim_time)" />
+
  <!-- Turn on hybrid_astar node -->
  <node name="hybrid_astar" pkg="hybrid_astar" type="hybrid_astar" /> 
  <node name="tf_broadcaster" pkg="hybrid_astar" type="tf_broadcaster" />

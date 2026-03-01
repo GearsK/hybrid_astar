@@ -86,3 +86,13 @@ install(TARGETS ${PROJECT_NAME} tf_broadcaster
 install(DIRECTORY launch/
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
     )
+
+# Python scripts (e.g. leader controller for Gazebo)
+install(PROGRAMS src/scripts/leader.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+  RENAME leader
+  )
+install(PROGRAMS src/scripts/leader_v1.2.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+  RENAME leader_v1.2
+  )

@@ -1,0 +1,13 @@
+"""
+Leader SMC v1.1 — fixes for odom-space path following.
+
+Changes from v1.0:
+  1. Odom frame: path/trajectory published in "odom"; /sPath should be in odom.
+  2. Velocity from odom: xdot, ydot from odom twist (world frame).
+  3. Goal tolerance: stop when within goal_tol of final waypoint.
+  4. Angle wrapping: heading error wrapped to [-pi, pi].
+  5. Desired velocity: constant desired_speed toward lookahead (not dx/T).
+  6. Clipping: velocity from odom only (no integration), so no drift when v/omega are clipped.
+  7. Path frame: warn if /sPath is not in odom.
+  8. Path reset: only clear path when new path actually differs.
+"""

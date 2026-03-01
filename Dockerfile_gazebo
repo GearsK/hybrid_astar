@@ -1,0 +1,48 @@
+# Gazebo + TurtleBot3 sim for use with hybrid_astar (same ROS master, e.g. --network rosnet).
+# Build (native arch, e.g. arm64 on Apple Silicon): docker build -f Dockerfile_gazebo -t hybrid_astar_gazebo:noetic .
+# Build (force amd64): docker build --platform linux/amd64 -f Dockerfile_gazebo -t hybrid_astar_gazebo:noetic .
+# Run with VNC (recommended: see Gazebo in Real VNC Viewer, no XQuartz):
+#   docker run -it --rm --name gazebo --network rosnet -p 5902:5900 \
+#     -e ROS_MASTER_URI=http://astar:11311 -e ROS_HOSTNAME=gazebo -e TURTLEBOT3_MODEL=burger \
+#     hybrid_astar_gazebo:noetic /run_gazebo_vnc.sh
+#   Then connect VNC to localhost:5902 (no password). A* is on 5901, Gazebo on 5902.
+#
+# Run with XQuartz (optional; often fails with libGL/swrast):
+#   1. Start XQuartz, export DISPLAY=:0, xhost +localhost
+#   2. docker run ... -e DISPLAY=host.docker.internal:0 -e LIBGL_ALWAYS_SOFTWARE=1 ... hybrid_astar_gazebo:noetic
+# Or override launch: ... hybrid_astar_gazebo:noetic roslaunch turtlebot3_gazebo turtlebot3_empty_world.launch
+FROM osrf/ros:noetic-desktop-full
+
+# Gazebo Classic + ROS integration, topic_tools, Mesa GL, and VNC (for GUI via VNC or XQuartz)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ros-noetic-gazebo-ros-pkgs \
+    ros-noetic-gazebo-ros-control \
+    ros-noetic-topic-tools \
+    git \
+    libgl1-mesa-glx \
+    libgl1-mesa-dri \
+    xvfb \
+    x11vnc \
+    && rm -rf /var/lib/apt/lists/*
+
+# TurtleBot3: build from source (branch noetic)
+RUN mkdir -p /catkin_ws/src && cd /catkin_ws/src \
+    && git clone --depth 1 -b noetic https://github.com/ROBOTIS-GIT/turtlebot3.git \
+    && git clone --depth 1 -b noetic https://github.com/ROBOTIS-GIT/turtlebot3_msgs.git \
+    && git clone --depth 1 -b noetic https://github.com/ROBOTIS-GIT/turtlebot3_simulations.git
+
+WORKDIR /catkin_ws
+RUN /bin/bash -c "source /opt/ros/noetic/setup.bash && catkin_make"
+RUN echo "source /catkin_ws/devel/setup.bash" >> /root/.bashrc
+
+# Entrypoint sources workspace so roslaunch finds turtlebot3_gazebo
+COPY scripts/docker_gazebo_entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+# VNC mode: run with CMD /run_gazebo_vnc.sh and -p 5902:5900; connect Real VNC Viewer to localhost:5902
+COPY scripts/run_gazebo_vnc.sh /run_gazebo_vnc.sh
+RUN chmod +x /run_gazebo_vnc.sh
+ENTRYPOINT ["/entrypoint.sh"]
+
+# Default model and launch (override by passing a command to docker run)
+ENV TURTLEBOT3_MODEL=burger
+CMD ["roslaunch", "turtlebot3_gazebo", "turtlebot3_world.launch"]

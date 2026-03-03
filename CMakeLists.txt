@@ -87,6 +87,10 @@ install(DIRECTORY launch/
     DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/launch
     )
 
+install(DIRECTORY maps/
+    DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/maps
+    )
+
 # Python scripts (e.g. leader controller for Gazebo)
 install(PROGRAMS src/scripts/leader.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}

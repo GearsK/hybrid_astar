@@ -20,6 +20,20 @@ sleep 1
 source /opt/ros/noetic/setup.bash
 source /catkin_ws/devel/setup.bash
 
+# Ensure map and its image exist so map_server loads the maze in RViz
+MAP_DIR="$(rospack find hybrid_astar)/maps"
+if [ ! -f "$MAP_DIR/map.yaml" ]; then
+  echo "Error: Map not found at $MAP_DIR/map.yaml"
+  exit 1
+fi
+MAP_IMG="$(grep '^image:' "$MAP_DIR/map.yaml" | sed 's/^image:[[:space:]]*//')"
+if [ -z "$MAP_IMG" ] || [ ! -f "$MAP_DIR/$MAP_IMG" ]; then
+  echo "Error: Map image not found: $MAP_DIR/$MAP_IMG (check maps/map.yaml image: field)"
+  exit 1
+fi
+echo "Using map: $MAP_DIR/map.yaml (image: $MAP_IMG)"
+echo "If obstacles are not honoured: in map.yaml set negate: 1 when image has white=obstacle, black=free."
+
 # When USE_SIM_TIME is set (e.g. when also running Gazebo container), use sim time so TF from Gazebo is not TF_OLD_DATA
 SIM_TIME_ARG=""
 if [ "${USE_SIM_TIME}" = "true" ] || [ "${USE_SIM_TIME}" = "1" ]; then
@@ -45,6 +59,12 @@ if [ ! -f "$LEADER_SCRIPT" ]; then
   exit 1
 fi
 echo "Starting leader (subscribes to /sPath, publishes to /turtlebot3_leader/cmd_vel)."
+# When using a separate Gazebo container: use /odom and /cmd_vel so the robot moves and odom updates.
+if [ "${USE_SIM_TIME}" = "true" ] || [ "${USE_SIM_TIME}" = "1" ]; then
+  rosparam set /leader_smc/odom_topic /odom 2>/dev/null || true
+  rosparam set /leader_smc/cmd_vel_topic /cmd_vel 2>/dev/null || true
+  echo "Leader will use /odom and /cmd_vel (Gazebo two-container setup)."
+fi
 python3 "$LEADER_SCRIPT" || true
 
 # Cleanup when leader exits

@@ -6,6 +6,7 @@ docker run --rm --platform linux/amd64 --network rosnet --name astar -p 5901:590
   hybrid_astar:noetic /catkin_ws/src/hybrid_astar/scripts/run_gazebo_with_astar.sh
 
 
+docker build --platform linux/amd64 -f Dockerfile_gazebo -t hybrid_astar_gazebo:noetic .
 
 docker run -it --rm --name gazebo --network rosnet \
   -e ROS_MASTER_URI=http://astar:11311 \

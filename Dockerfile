@@ -19,6 +19,13 @@ WORKDIR /catkin_ws/src
 # Copy this package into the workspace (context is repo root)
 COPY . /catkin_ws/src/hybrid_astar
 
+# Ensure map and image exist so RViz shows the chosen maze (maps/map.yaml image: field)
+RUN MAP_YAML=/catkin_ws/src/hybrid_astar/maps/map.yaml && \
+    test -f "$MAP_YAML" && \
+    MAP_IMG=$(grep '^image:' "$MAP_YAML" | sed 's/^image:[[:space:]]*//') && \
+    test -n "$MAP_IMG" && test -f "/catkin_ws/src/hybrid_astar/maps/$MAP_IMG" || \
+    (echo "Build error: maps/map.yaml or its image not found. Ensure maps/ contains the image referenced in map.yaml (e.g. map_maze.png)." && exit 1)
+
 WORKDIR /catkin_ws
 
 # Build

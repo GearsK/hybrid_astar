@@ -91,6 +91,8 @@ class Planner {
   DynamicVoronoi voronoiDiagram;
   /// A pointer to the grid the planner runs on
   nav_msgs::OccupancyGrid::Ptr grid;
+  /// Resampled grid at Constants::cellSize when map resolution differs (e.g. TurtleBot 0.05m)
+  nav_msgs::OccupancyGrid::Ptr gridResampled;
   /// The start pose set through RViz
   geometry_msgs::PoseWithCovarianceStamped start;
   /// The goal pose set through RViz

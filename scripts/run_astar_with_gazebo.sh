@@ -74,6 +74,17 @@ if [ "$RUN_GZ" = true ]; then
 fi
 
 # --- Start Hybrid A* stack (map_server, hybrid_astar, RViz) ---
+MAP_DIR="$(rospack find hybrid_astar)/maps"
+if [ ! -f "$MAP_DIR/map.yaml" ]; then
+  echo "Error: Map not found at $MAP_DIR/map.yaml"
+  exit 1
+fi
+MAP_IMG="$(grep '^image:' "$MAP_DIR/map.yaml" | sed 's/^image:[[:space:]]*//')"
+if [ -z "$MAP_IMG" ] || [ ! -f "$MAP_DIR/$MAP_IMG" ]; then
+  echo "Error: Map image not found: $MAP_DIR/$MAP_IMG (check maps/map.yaml image: field)"
+  exit 1
+fi
+echo "Using map: $MAP_DIR/map.yaml (image: $MAP_IMG)"
 echo "Starting Hybrid A* (map + planner + RViz)..."
 roslaunch hybrid_astar manual.launch &
 LAUNCH_PID=$!

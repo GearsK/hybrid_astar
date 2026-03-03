@@ -3,6 +3,7 @@ resolution: 1
 origin: [0.0, 0.0, 0.0]
 occupied_thresh: 0.1
 free_thresh: 0.05
+# 0 = black occupied / white free (default). Use 1 if your image has white=obstacle, black=free.
 negate: 0
 
 

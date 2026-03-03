@@ -1,5 +1,8 @@
 #include "planner.h"
 
+#include <cmath>
+#include <algorithm>
+
 using namespace HybridAStar;
 //###################################################
 //                                        CONSTRUCTOR
@@ -47,13 +50,67 @@ void Planner::setMap(const nav_msgs::OccupancyGrid::Ptr map) {
     std::cout << "I am seeing the map..." << std::endl;
   }
 
-  grid = map;
+  const double res = map->info.resolution;
+  const int ow = map->info.width;
+  const int oh = map->info.height;
+  const double mapWidthM = ow * res;
+  const double mapHeightM = oh * res;
+
+  // Resample to Constants::cellSize (0.1m) when map resolution differs (e.g. TurtleBot 0.05m)
+  // so the planner's collision lookup and grid math (which assume 0.1m cells) stay correct.
+  if (std::fabs(res - Constants::cellSize) > 1e-6f) {
+    const float cellSize = Constants::cellSize;
+    const int nw = static_cast<int>(mapWidthM / cellSize + 0.5);
+    const int nh = static_cast<int>(mapHeightM / cellSize + 0.5);
+    if (nw <= 0 || nh <= 0) {
+      std::cout << "setMap: resampled grid would be empty, using map as-is." << std::endl;
+      grid = map;
+    } else {
+      gridResampled = nav_msgs::OccupancyGrid::Ptr(new nav_msgs::OccupancyGrid());
+      gridResampled->info.resolution = cellSize;
+      gridResampled->info.width = nw;
+      gridResampled->info.height = nh;
+      gridResampled->info.origin = map->info.origin;
+      gridResampled->header = map->header;
+      gridResampled->data.resize(static_cast<size_t>(nw * nh), 0);
+
+      for (int j = 0; j < nh; ++j) {
+        for (int i = 0; i < nw; ++i) {
+          int ox0 = static_cast<int>(i * cellSize / res);
+          int oy0 = static_cast<int>(j * cellSize / res);
+          int ox1 = static_cast<int>((i + 1) * cellSize / res) - 1;
+          int oy1 = static_cast<int>((j + 1) * cellSize / res) - 1;
+          ox0 = std::max(0, ox0);
+          oy0 = std::max(0, oy0);
+          ox1 = std::min(ow - 1, ox1);
+          oy1 = std::min(oh - 1, oy1);
+          int8_t val = 0;
+          for (int oy = oy0; oy <= oy1 && !val; ++oy) {
+            for (int ox = ox0; ox <= ox1; ++ox) {
+              if (map->data[static_cast<size_t>(oy * ow + ox)]) {
+                val = 100;
+                break;
+              }
+            }
+          }
+          gridResampled->data[static_cast<size_t>(j * nw + i)] = val;
+        }
+      }
+      std::cout << "setMap: resampled " << ow << "x" << oh << " @" << res << "m to "
+                << nw << "x" << nh << " @" << cellSize << "m for planner." << std::endl;
+      grid = gridResampled;
+    }
+  } else {
+    grid = map;
+    gridResampled.reset();
+  }
+
   //update the configuration space with the current map
-  configurationSpace.updateGrid(map);
+  configurationSpace.updateGrid(grid);
   //create array for Voronoi diagram
 //  ros::Time t0 = ros::Time::now();
-  int height = map->info.height;
-  int width = map->info.width;
+  int height = grid->info.height;
+  int width = grid->info.width;
   bool** binMap;
   binMap = new bool*[width];
 
@@ -61,7 +118,7 @@ void Planner::setMap(const nav_msgs::OccupancyGrid::Ptr map) {
 
   for (int x = 0; x < width; ++x) {
     for (int y = 0; y < height; ++y) {
-      binMap[x][y] = map->data[y * width + x] ? true : false;
+      binMap[x][y] = grid->data[y * width + x] ? true : false;
     }
   }
 
@@ -82,8 +139,10 @@ void Planner::setMap(const nav_msgs::OccupancyGrid::Ptr map) {
     start.pose.pose.position.y = transform.getOrigin().y();
     tf::quaternionTFToMsg(transform.getRotation(), start.pose.pose.orientation);
 
-    if (grid->info.height >= start.pose.pose.position.y && start.pose.pose.position.y >= 0 &&
-        grid->info.width >= start.pose.pose.position.x && start.pose.pose.position.x >= 0) {
+    const double maxX = grid->info.width * grid->info.resolution;
+    const double maxY = grid->info.height * grid->info.resolution;
+    if (start.pose.pose.position.x >= 0 && start.pose.pose.position.x <= maxX &&
+        start.pose.pose.position.y >= 0 && start.pose.pose.position.y <= maxY) {
       // set the start as valid and plan
       validStart = true;
     } else  {
@@ -98,8 +157,17 @@ void Planner::setMap(const nav_msgs::OccupancyGrid::Ptr map) {
 //                                   INITIALIZE START
 //###################################################
 void Planner::setStart(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr& initial) {
-  float x = initial->pose.pose.position.x / Constants::cellSize;
-  float y = initial->pose.pose.position.y / Constants::cellSize;
+  if (!grid) {
+    std::cout << "setStart: map not received yet, ignoring initial pose." << std::endl;
+    return;
+  }
+  const double px = initial->pose.pose.position.x;
+  const double py = initial->pose.pose.position.y;
+  const double maxX = grid->info.width * grid->info.resolution;
+  const double maxY = grid->info.height * grid->info.resolution;
+
+  float x = px / Constants::cellSize;
+  float y = py / Constants::cellSize;
   float t = tf::getYaw(initial->pose.pose.orientation);
   // publish the start without covariance for rviz
   geometry_msgs::PoseStamped startN;
@@ -110,7 +178,15 @@ void Planner::setStart(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr&
 
   std::cout << "I am seeing a new start x:" << x << " y:" << y << " t:" << Helper::toDeg(t) << std::endl;
 
-  if (grid->info.height >= y && y >= 0 && grid->info.width >= x && x >= 0) {
+  if (px >= 0 && px <= maxX && py >= 0 && py <= maxY) {
+    // Reject if start is inside an obstacle (prevents path from starting in walls)
+    const int cx = static_cast<int>(px / grid->info.resolution);
+    const int cy = static_cast<int>(py / grid->info.resolution);
+    if (cx >= 0 && cx < grid->info.width && cy >= 0 && cy < grid->info.height &&
+        grid->data[cy * grid->info.width + cx] != 0) {
+      std::cout << "invalid start (inside obstacle) x:" << px << " y:" << py << " — place 2D Pose Estimate in free (white) area." << std::endl;
+      return;
+    }
     validStart = true;
     start = *initial;
 
@@ -119,7 +195,7 @@ void Planner::setStart(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr&
     // publish start for RViz
     pubStart.publish(startN);
   } else {
-    std::cout << "invalid start x:" << x << " y:" << y << " t:" << Helper::toDeg(t) << std::endl;
+    std::cout << "invalid start (out of map bounds) x:" << px << " y:" << py << " (map 0-" << maxX << ", 0-" << maxY << ")" << std::endl;
   }
 }
 
@@ -127,21 +203,38 @@ void Planner::setStart(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr&
 //                                    INITIALIZE GOAL
 //###################################################
 void Planner::setGoal(const geometry_msgs::PoseStamped::ConstPtr& end) {
+  if (!grid) {
+    std::cout << "setGoal: map not received yet, ignoring goal." << std::endl;
+    return;
+  }
   // retrieving goal position
-  float x = end->pose.position.x / Constants::cellSize;
-  float y = end->pose.position.y / Constants::cellSize;
+  const double px = end->pose.position.x;
+  const double py = end->pose.position.y;
+  const double maxX = grid->info.width * grid->info.resolution;
+  const double maxY = grid->info.height * grid->info.resolution;
+
+  float x = px / Constants::cellSize;
+  float y = py / Constants::cellSize;
   float t = tf::getYaw(end->pose.orientation);
 
   std::cout << "I am seeing a new goal x:" << x << " y:" << y << " t:" << Helper::toDeg(t) << std::endl;
 
-  if (grid->info.height >= y && y >= 0 && grid->info.width >= x && x >= 0) {
+  if (px >= 0 && px <= maxX && py >= 0 && py <= maxY) {
+    // Reject if goal is inside an obstacle (prevents path into walls)
+    const int cx = static_cast<int>(px / grid->info.resolution);
+    const int cy = static_cast<int>(py / grid->info.resolution);
+    if (cx >= 0 && cx < grid->info.width && cy >= 0 && cy < grid->info.height &&
+        grid->data[cy * grid->info.width + cx] != 0) {
+      std::cout << "invalid goal (inside obstacle) x:" << px << " y:" << py << " — set 2D Nav Goal in free (white) area." << std::endl;
+      return;
+    }
     validGoal = true;
     goal = *end;
 
     if (Constants::manual) { plan();}
 
   } else {
-    std::cout << "invalid goal x:" << x << " y:" << y << " t:" << Helper::toDeg(t) << std::endl;
+    std::cout << "invalid goal (out of map bounds) x:" << px << " y:" << py << " (map 0-" << maxX << ", 0-" << maxY << ")" << std::endl;
   }
 }
 
